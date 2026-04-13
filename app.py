@@ -4,15 +4,103 @@ SPEC Scan Viewer - Interactive beamline scan data browser.
 Launch:  streamlit run app.py
 """
 
-import streamlit as st
-import plotly.graph_objects as go
+import base64
+import os
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-import os
+import plotly.graph_objects as go
+import streamlit as st
 
 from spec_parser import parse_spec_file
 
 st.set_page_config(page_title="Alignment Plotter", layout="wide")
+
+# ── Chrome cleanup (hide Deploy + status widget) ─────────────────────────────
+st.markdown(
+    """
+    <style>
+    .stDeployButton {display: none;}
+    [data-testid="stStatusWidget"] {display: none;}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# ── Theme state + runtime dark/light toggle ──────────────────────────────────
+if "themes" not in st.session_state:
+    st.session_state.themes = {
+        "current_theme": "dark",
+        "refreshed": True,
+        "light": {
+            "theme.base": "light",
+            "theme.backgroundColor": "#f9f6ef",
+            "theme.secondaryBackgroundColor": "#ffffff",
+            "theme.primaryColor": "#8B1538",
+            "theme.textColor": "#1a1a1a",
+            "button_face": "🌙",
+        },
+        "dark": {
+            "theme.base": "dark",
+            "theme.backgroundColor": "#1a1a1a",
+            "theme.secondaryBackgroundColor": "#2d2d2d",
+            "theme.primaryColor": "#8B1538",
+            "theme.textColor": "#f0f0f0",
+            "button_face": "☀️",
+        },
+    }
+
+
+def change_theme():
+    current = st.session_state.themes["current_theme"]
+    new_theme = "light" if current == "dark" else "dark"
+    for key, val in st.session_state.themes[new_theme].items():
+        if key.startswith("theme"):
+            st._config.set_option(key, val)
+    st.session_state.themes["current_theme"] = new_theme
+    st.session_state.themes["refreshed"] = False
+
+
+def apply_current_theme():
+    current = st.session_state.themes["current_theme"]
+    for key, val in st.session_state.themes[current].items():
+        if key.startswith("theme"):
+            st._config.set_option(key, val)
+
+
+apply_current_theme()
+
+
+def get_logo_base64():
+    logo_path = Path(__file__).parent / "ssrl-logo.png"
+    if logo_path.exists():
+        with open(logo_path, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    return None
+
+
+# ── Sidebar header: logo + theme toggle ──────────────────────────────────────
+with st.sidebar:
+    logo_b64 = get_logo_base64()
+    header_left, header_right = st.columns([3, 1])
+    with header_left:
+        if logo_b64:
+            st.markdown(
+                f'<img src="data:image/png;base64,{logo_b64}" style="height: 40px;">',
+                unsafe_allow_html=True,
+            )
+    with header_right:
+        btn_face = st.session_state.themes[
+            st.session_state.themes["current_theme"]
+        ]["button_face"]
+        st.button(btn_face, on_click=change_theme, help="Toggle light/dark mode")
+
+# After theme change: force one extra rerun so widgets repaint with the new theme
+if not st.session_state.themes["refreshed"]:
+    st.session_state.themes["refreshed"] = True
+    st.rerun()
+
 st.title("Alignment Plotter")
 
 
